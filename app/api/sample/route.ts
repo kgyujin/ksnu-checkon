@@ -17,7 +17,7 @@ export async function GET() {
 
   // 1. 국세청 API 상태 테스트
   try {
-    console.log('🏢 국세청 API 테스트 중...');
+    console.log('[NTS] 국세청 API 테스트 중...');
     const ntsApiKey = process.env.NTS_API_KEY;
     const ntsUrl = `https://api.odcloud.kr/api/nts-businessman/v1/status?serviceKey=${ntsApiKey}&returnType=JSON`;
     
@@ -38,9 +38,9 @@ export async function GET() {
     };
 
     if (ntsRes.ok && ntsData?.data?.length > 0) {
-      results.recommendations.push('✅ 국세청 API 정상 작동');
+      results.recommendations.push('국세청 API 정상 작동');
     } else {
-      results.recommendations.push('⚠️ 국세청 API: 사업자등록번호 미등록 또는 비활성');
+      results.recommendations.push('국세청 API: 사업자등록번호 미등록 또는 비활성');
     }
   } catch (e: any) {
     results.apiStatus.nts = {
@@ -52,7 +52,7 @@ export async function GET() {
 
   // 2. 공정위 API 상태 테스트
   try {
-    console.log('⚖️ 공정위 API 테스트 중...');
+    console.log('[FTC] 공정위 API 테스트 중...');
     const ftcApiKey = process.env.FTC_API_KEY;
     const ftcUrl = `https://apis.data.go.kr/1130000/MllBsDtl_3Service/getMllBsInfoDetail_3`;
     
@@ -75,9 +75,9 @@ export async function GET() {
     };
 
     if (ftcRes.ok) {
-      results.recommendations.push('✅ 공정위 API 정상 작동');
+      results.recommendations.push('공정위 API 정상 작동');
     } else {
-      results.recommendations.push('⚠️ 공정위 API: 응답 대기 중 또는 데이터 없음');
+      results.recommendations.push('공정위 API: 응답 대기 중 또는 데이터 없음');
     }
   } catch (e: any) {
     results.apiStatus.ftc = {

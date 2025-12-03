@@ -79,29 +79,49 @@ export async function POST(request: Request) {
     }
 
     // =================================================================
-    // STEP 3: 특허청 (KIPRIS) 조회 -> 상표권 검증 (자동화)
+    // STEP 3: 특허청 (KIPRIS) 조회 -> 상표/특허 정보
     // =================================================================
     const targetBrandName = brandName || businessInfo.corpName;
+    let kiprisTrademark: any = { status: 'Skip', message: '검색어 없음', raw: null };
+    let kiprisPatent: any = { status: 'Skip', message: '검색어 없음', raw: null };
+    let kiprisTmHistory: any = { status: 'Skip', message: '출원번호 없음', raw: null };
+
     if (targetBrandName) {
-      kiprisResult = await handleKIPRIS(targetBrandName);
+      kiprisTrademark = await handleKIPRIS(targetBrandName);
       businessInfo.brandName = targetBrandName;
+
+      // 특허·실용 검색
+      kiprisPatent = await handleKIPRISPatent(targetBrandName);
+
+      // 상표 행정처리 이력 (상표 검색 결과의 출원번호 기준)
+      const tmApplicationNumber = kiprisTrademark.applicationNumber;
+      if (tmApplicationNumber) {
+        kiprisTmHistory = await handleKIPRISTrademarkHistory(tmApplicationNumber);
+      }
     }
-
-    // 신뢰도 점수 계산
-    const safetyScore = calculateSafetyScore(ntsResult, ftcResult, kiprisResult);
-
-    // AI 브리핑 텍스트 생성
-    const summaryText = generateAIBriefing(businessInfo, ntsResult, ftcResult);
-
+    
+    // 신뢰도 점수 계산 (상표 검색 결과 기준)
+    const safetyScore = calculateSafetyScore(ntsResult, ftcResult, kiprisTrademark);
+    
+    // 기업정보 요약 생성
+    const summaryText = generateCompanyBriefing(businessInfo, ntsResult, ftcResult);
+    
     return NextResponse.json({
       success: true,
       data: {
-        safetyScore: safetyScore,
-        businessInfo: businessInfo,
+        safetyScore,
+        businessInfo,
         summary: summaryText,
         bizStatus: ntsResult.message,
         onlineLicense: ftcResult.message,
-        brandRight: kiprisResult.message
+        brandRight: kiprisTrademark.message,
+        sources: {
+          nts: ntsResult,
+          ftc: ftcResult,
+          kiprisTrademark,
+          kiprisPatent,
+          kiprisTmHistory
+        }
       }
     });
 
@@ -164,7 +184,7 @@ async function handleFTC(bizNumber: string) {
           data: item // 전체 데이터 반환
         };
       } else {
-        console.log('⚠️ [FTC] 등록된 정보 없음');
+        console.log('[FTC] 등록된 정보 없음');
         return { 
           status: 'NONE', 
           message: '통신판매업 미등록', 
@@ -285,14 +305,115 @@ async function handleKIPRIS(brandName: string) {
   if (isMock) {
     return { 
       status: 'Test', 
-      message: brandName.includes('테스트') || brandName.includes('삼성') ? '✅ 등록된 상표권 있음' : '⚠️ 상표권 정보 없음'
+      message: brandName.includes('테스트') || brandName.includes('삼성') ? '등록된 상표권이 있습니다.' : '상표권 정보가 없습니다.',
+      raw: null
     };
   }
 
-  return { 
-    status: 'Unknown', 
-    message: ''
-  };
+  const apiKey = process.env.KIPRIS_API_KEY;
+  if (!apiKey) {
+    console.error('❌ KIPRIS_API_KEY 환경변수 미설정');
+    return { 
+      status: 'ConfigError', 
+      message: '특허청(KIPRIS) API 키가 설정되지 않았습니다. 관리자에게 문의해 주세요.',
+      raw: null
+    };
+  }
+
+  // 상표 출원 속보 - 단어 검색(getWordSearch) 사용
+  const baseUrl = 'http://plus.kipris.or.kr/kipo-api/kipi/trademarkInfoSearchService/getWordSearch';
+
+  const params = new URLSearchParams({
+    searchString: brandName,
+    searchRecentYear: '0',   // 전체 기간
+    numOfRows: '20',
+    pageNo: '1',
+    ServiceKey: apiKey
+  });
+
+  try {
+    console.log('🚀 [KIPRIS] 상표 검색 호출:', brandName);
+    const res = await fetch(`${baseUrl}?${params.toString()}`, {
+      method: 'GET'
+    });
+
+    const xmlText = await res.text();
+
+    if (!res.ok) {
+      console.error('❌ [KIPRIS] HTTP 오류:', res.status);
+      return {
+        status: 'Error',
+        message: '특허청 상표 API 응답 오류',
+        raw: xmlText
+      };
+    }
+
+    // 기본 응답 코드 확인
+    const resultCode = extractXmlTag(xmlText, 'resultCode');
+    if (resultCode && resultCode !== '00') {
+      const resultMsg = extractXmlTag(xmlText, 'resultMsg') || 'KIPRIS 오류';
+      return {
+        status: 'Error',
+        message: `특허청 상표 API 오류: ${resultMsg}`,
+        raw: xmlText
+      };
+    }
+
+    // 첫 번째 item 기준으로 요약 생성
+    const firstItemXml = extractFirstItem(xmlText);
+    if (!firstItemXml) {
+      return {
+        status: 'NotFound',
+        message: '해당 명칭으로 조회된 상표 출원/등록 정보가 없습니다.',
+        raw: xmlText
+      };
+    }
+
+    const title = extractXmlTag(firstItemXml, 'title');
+    const applicationStatus = extractXmlTag(firstItemXml, 'applicationStatus');
+    const applicantName = extractXmlTag(firstItemXml, 'applicantName');
+    const registrationNumber = extractXmlTag(firstItemXml, 'registrationNumber');
+    const registrationDate = extractXmlTag(firstItemXml, 'registrationDate');
+    const applicationNumber = extractXmlTag(firstItemXml, 'applicationNumber');
+
+    let message = '';
+    if (applicationStatus.includes('등록')) {
+      message = `상표권 상태 요약\n` +
+        `- 대상 명칭: '${brandName}' (또는 유사 표현)\n` +
+        `- 등록 여부: 등록된 상표가 확인되었습니다.\n` +
+        `- 상표명: ${title || '정보 없음'}\n` +
+        `- 출원인: ${applicantName || '정보 없음'}\n` +
+        `- 등록번호: ${registrationNumber || '정보 없음'}\n` +
+        (registrationDate ? `- 등록일자: ${registrationDate}\n` : '');
+    } else if (applicationStatus.includes('출원') || applicationStatus.includes('공고')) {
+      message = `상표권 상태 요약\n` +
+        `- 대상 명칭: '${brandName}' (또는 유사 표현)\n` +
+        `- 등록 여부: 출원 또는 심사 단계의 상표가 있습니다.\n` +
+        `- 상표명: ${title || '정보 없음'}\n` +
+        `- 출원인: ${applicantName || '정보 없음'}\n` +
+        `- 현재 상태: ${applicationStatus}`;
+    } else {
+      message = `상표권 상태 요약\n` +
+        `- 대상 명칭: '${brandName}'\n` +
+        `- 등록 여부: 뚜렷한 등록 상표는 확인되지 않았습니다.\n` +
+        `- 가장 근접한 상표명: ${title || '정보 없음'}\n` +
+        (applicationStatus ? `- 상태: ${applicationStatus}` : '');
+    }
+
+    return {
+      status: 'OK',
+      message,
+      applicationNumber,
+      raw: xmlText
+    };
+  } catch (e) {
+    console.error('❌ [KIPRIS] Fetch 오류:', e);
+    return {
+      status: 'Error',
+      message: '특허청 상표 API 연결 오류',
+      raw: null
+    };
+  }
 }
 
 // =================================================================
@@ -340,46 +461,242 @@ function parseDomains(urlString: string): string[] {
   return urls;
 }
 
-function generateAIBriefing(info: any, nts: any, ftc: any): string {
-  // 핵심 정보가 없으면 기본 메시지
-  if (!info.corpName && ftc.status !== 'OK') {
-    return '✓ 국세청 등록 사업자입니다.\n\n💡 더 자세한 정보를 원하시면 사업자등록증을 확인하세요.';
+// 특허·실용 공개·등록공보 - 단어 검색
+async function handleKIPRISPatent(word: string) {
+  const apiKey = process.env.KIPRIS_API_KEY;
+  if (!apiKey) {
+    return {
+      status: 'ConfigError',
+      message: 'KIPRIS API 키 미설정으로 특허·실용 조회를 수행할 수 없습니다.',
+      raw: null
+    };
   }
 
-  // 머니핀 스타일 AI 브리핑
+  const baseUrl = 'http://plus.kipris.or.kr/kipo-api/kipi/patUtiModInfoSearchSevice/getWordSearch';
+
+  const params = new URLSearchParams({
+    word,
+    year: '0',       // 전체 기간
+    patent: 'true',  // 특허 포함
+    utility: 'true', // 실용 포함
+    numOfRows: '20',
+    pageNo: '1',
+    ServiceKey: apiKey
+  });
+
+  try {
+    console.log('🚀 [KIPRIS] 특허/실용 검색 호출:', word);
+    const res = await fetch(`${baseUrl}?${params.toString()}`, {
+      method: 'GET'
+    });
+
+    const xmlText = await res.text();
+
+    if (!res.ok) {
+      console.error('❌ [KIPRIS] 특허/실용 HTTP 오류:', res.status);
+      return {
+        status: 'Error',
+        message: '특허·실용 공개·등록공보 API 응답 오류',
+        raw: xmlText
+      };
+    }
+
+    const resultCode = extractXmlTag(xmlText, 'resultCode');
+    if (resultCode && resultCode !== '00') {
+      const resultMsg = extractXmlTag(xmlText, 'resultMsg') || 'KIPRIS 특허/실용 오류';
+      return {
+        status: 'Error',
+        message: `특허·실용 API 오류: ${resultMsg}`,
+        raw: xmlText
+      };
+    }
+
+    const firstItemXml = extractFirstItem(xmlText);
+    if (!firstItemXml) {
+      return {
+        status: 'NotFound',
+        message: '해당 단어로 조회된 특허·실용 공보가 없습니다.',
+        raw: xmlText
+      };
+    }
+
+    const inventionTitle = extractXmlTag(firstItemXml, 'inventionTitle');
+    const registerStatus = extractXmlTag(firstItemXml, 'registerStatus');
+    const registerNumber = extractXmlTag(firstItemXml, 'registerNumber');
+    const registerDate = extractXmlTag(firstItemXml, 'registerDate');
+    const applicantName = extractXmlTag(firstItemXml, 'applicantName');
+
+    let message = '';
+    if (registerStatus.includes('등록')) {
+      message = `특허·실용 공보 요약\n` +
+        `- 검색어: '${word}'\n` +
+        `- 등록 여부: 관련 등록 특허/실용 공보가 있습니다.\n` +
+        `- 발명의 명칭: ${inventionTitle || '정보 없음'}\n` +
+        `- 출원인: ${applicantName || '정보 없음'}\n` +
+        `- 등록번호: ${registerNumber || '정보 없음'}\n` +
+        (registerDate ? `- 등록일자: ${registerDate}` : '');
+    } else {
+      message = `특허·실용 공보 요약\n` +
+        `- 검색어: '${word}'\n` +
+        `- 등록 여부: 관련 등록 특허/실용 공보는 확인되지 않았습니다.\n` +
+        `- 가장 근접한 발명의 명칭: ${inventionTitle || '정보 없음'}\n` +
+        (registerStatus ? `- 상태: ${registerStatus}` : '');
+    }
+
+    return {
+      status: 'OK',
+      message,
+      raw: xmlText
+    };
+  } catch (e) {
+    console.error('❌ [KIPRIS] 특허/실용 Fetch 오류:', e);
+    return {
+      status: 'Error',
+      message: '특허·실용 공개·등록공보 API 연결 오류',
+      raw: null
+    };
+  }
+}
+
+// 상표 행정처리 이력
+async function handleKIPRISTrademarkHistory(applicationNumber: string) {
+  const apiKey = process.env.KIPRIS_API_KEY;
+  if (!apiKey) {
+    return {
+      status: 'ConfigError',
+      message: 'KIPRIS API 키 미설정으로 상표 행정처리 이력을 조회할 수 없습니다.',
+      raw: null
+    };
+  }
+
+  const baseUrl = 'http://plus.kipris.or.kr/openapi/rest/RelatedDocsonfileTMService/relatedDocsonfileInfo';
+  const params = new URLSearchParams({
+    applicationNumber,
+    accessKey: apiKey
+  });
+
+  try {
+    console.log('🚀 [KIPRIS] 상표 행정처리 이력 조회:', applicationNumber);
+    const res = await fetch(`${baseUrl}?${params.toString()}`, {
+      method: 'GET'
+    });
+
+    const xmlText = await res.text();
+
+    if (!res.ok) {
+      console.error('❌ [KIPRIS] 상표 이력 HTTP 오류:', res.status);
+      return {
+        status: 'Error',
+        message: '상표 행정처리 이력 API 응답 오류',
+        raw: xmlText
+      };
+    }
+
+    const resultCode = extractXmlTag(xmlText, 'resultCode');
+    if (resultCode && resultCode !== '00') {
+      const resultMsg = extractXmlTag(xmlText, 'resultMsg') || '상표 이력 API 오류';
+      return {
+        status: 'Error',
+        message: `상표 행정처리 이력 API 오류: ${resultMsg}`,
+        raw: xmlText
+      };
+    }
+
+    // 한두 개 이력을 간단 요약 (가장 첫 이력 기준)
+    const firstInfoXml = extractFirstCustomItem(xmlText, 'relateddocsonfileInfo');
+    if (!firstInfoXml) {
+      return {
+        status: 'NotFound',
+        message: '해당 출원번호에 대한 행정처리 이력이 없습니다.',
+        raw: xmlText
+      };
+    }
+
+    const documentTitle = extractXmlTag(firstInfoXml, 'documentTitle');
+    const status = extractXmlTag(firstInfoXml, 'status');
+    const step = extractXmlTag(firstInfoXml, 'step');
+
+    const message = `상표 행정처리 이력이 확인되었습니다.\n` +
+      (step ? `• 단계: ${step}\n` : '') +
+      (status ? `• 처리상태: ${status}\n` : '') +
+      (documentTitle ? `• 대표 서류: ${documentTitle}` : '');
+
+    return {
+      status: 'OK',
+      message,
+      raw: xmlText
+    };
+  } catch (e) {
+    console.error('❌ [KIPRIS] 상표 이력 Fetch 오류:', e);
+    return {
+      status: 'Error',
+      message: '상표 행정처리 이력 API 연결 오류',
+      raw: null
+    };
+  }
+}
+
+// 간단한 XML 파서 유틸 (외부 라이브러리 없이 태그 내용 추출)
+function extractXmlTag(xml: string, tagName: string): string {
+  if (!xml) return '';
+  const regex = new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`);
+  const match = xml.match(regex);
+  return match ? match[1].trim() : '';
+}
+
+function extractFirstItem(xml: string): string | null {
+  if (!xml) return null;
+  const match = xml.match(/<item>([\s\S]*?)<\/item>/);
+  return match ? match[1] : null;
+}
+
+function extractFirstCustomItem(xml: string, tagName: string): string | null {
+  if (!xml) return null;
+  const regex = new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`);
+  const match = xml.match(regex);
+  return match ? match[1] : null;
+}
+
+function generateCompanyBriefing(info: any, nts: any, ftc: any): string {
+  // 핵심 정보가 없으면 기본 메시지
+  if (!info.corpName && ftc.status !== 'OK') {
+    return '국세청 등록 사업자입니다.\n\n더 자세한 정보를 원하시면 사업자등록증을 확인하세요.';
+  }
+
+  // 기업정보 요약
   let briefing = '';
 
   if (info.corpName) {
     const location = extractLocation(info.address);
-    briefing += `📍 ${info.corpName}\n`;
+    briefing += `${info.corpName}\n`;
     briefing += `${location} 소재의 업체입니다.\n\n`;
   }
 
   // 상태 정보
   if (nts.isValid) {
-    briefing += `✅ 국세청 상태: ${info.ntsStatus || '정상'}\n`;
+    briefing += `• 국세청 상태: ${info.ntsStatus || '정상'}\n`;
     if (info.taxType) {
-      briefing += `💰 과세 유형: ${info.taxType}\n`;
+      briefing += `• 과세 유형: ${info.taxType}\n`;
     }
   } else {
-    briefing += `⚠️ 국세청 확인 필요\n`;
+    briefing += `• 국세청 확인 필요\n`;
   }
 
   // 전자상거래 자격
   if (ftc.status === 'OK') {
-    briefing += `🛒 통신판매업: 신고 완료\n`;
+    briefing += `• 통신판매업: 신고 완료\n`;
     if (info.ftcNumber) {
-      briefing += `📋 신고번호: ${info.ftcNumber}\n`;
+      briefing += `• 신고번호: ${info.ftcNumber}\n`;
     }
   }
 
   // 웹사이트
   if (info.domain && info.domain.length > 0) {
-    briefing += `🌐 공식 사이트 운영 중\n`;
+    briefing += `• 공식 사이트 운영 중\n`;
   }
 
-  // 최종 평가
-  briefing += `\n🎯 신뢰도: 안정적인 거래 대상으로 평가됩니다.`;
+  // 신뢰도 평가
+  briefing += `\n안정적인 거래 대상으로 평가됩니다.`;
 
   return briefing;
 }
