@@ -378,26 +378,26 @@ async function handleKIPRIS(brandName: string) {
 
     let message = '';
     if (applicationStatus.includes('등록')) {
-      message = `상표권 상태 요약\n` +
-        `- 대상 명칭: '${brandName}' (또는 유사 표현)\n` +
-        `- 등록 여부: 등록된 상표가 확인되었습니다.\n` +
-        `- 상표명: ${title || '정보 없음'}\n` +
-        `- 출원인: ${applicantName || '정보 없음'}\n` +
-        `- 등록번호: ${registrationNumber || '정보 없음'}\n` +
-        (registrationDate ? `- 등록일자: ${registrationDate}\n` : '');
+      message =
+        `• 대상 명칭: '${brandName}' (또는 유사 표현)\n` +
+        `• 등록 여부: 등록된 상표가 확인되었습니다.\n` +
+        `• 상표명: ${title || '정보 없음'}\n` +
+        `• 출원인: ${applicantName || '정보 없음'}\n` +
+        `• 등록번호: ${registrationNumber || '정보 없음'}\n` +
+        (registrationDate ? `• 등록일자: ${registrationDate}\n` : '');
     } else if (applicationStatus.includes('출원') || applicationStatus.includes('공고')) {
-      message = `상표권 상태 요약\n` +
-        `- 대상 명칭: '${brandName}' (또는 유사 표현)\n` +
-        `- 등록 여부: 출원 또는 심사 단계의 상표가 있습니다.\n` +
-        `- 상표명: ${title || '정보 없음'}\n` +
-        `- 출원인: ${applicantName || '정보 없음'}\n` +
-        `- 현재 상태: ${applicationStatus}`;
+      message =
+        `• 대상 명칭: '${brandName}' (또는 유사 표현)\n` +
+        `• 등록 여부: 출원 또는 심사 단계의 상표가 있습니다.\n` +
+        `• 상표명: ${title || '정보 없음'}\n` +
+        `• 출원인: ${applicantName || '정보 없음'}\n` +
+        `• 현재 상태: ${applicationStatus}`;
     } else {
-      message = `상표권 상태 요약\n` +
-        `- 대상 명칭: '${brandName}'\n` +
-        `- 등록 여부: 뚜렷한 등록 상표는 확인되지 않았습니다.\n` +
-        `- 가장 근접한 상표명: ${title || '정보 없음'}\n` +
-        (applicationStatus ? `- 상태: ${applicationStatus}` : '');
+      message =
+        `• 대상 명칭: '${brandName}'\n` +
+        `• 등록 여부: 뚜렷한 등록 상표는 확인되지 않았습니다.\n` +
+        `• 가장 근접한 상표명: ${title || '정보 없음'}\n` +
+        (applicationStatus ? `• 상태: ${applicationStatus}` : '');
     }
 
     return {
@@ -528,19 +528,19 @@ async function handleKIPRISPatent(word: string) {
 
     let message = '';
     if (registerStatus.includes('등록')) {
-      message = `특허·실용 공보 요약\n` +
-        `- 검색어: '${word}'\n` +
-        `- 등록 여부: 관련 등록 특허/실용 공보가 있습니다.\n` +
-        `- 발명의 명칭: ${inventionTitle || '정보 없음'}\n` +
-        `- 출원인: ${applicantName || '정보 없음'}\n` +
-        `- 등록번호: ${registerNumber || '정보 없음'}\n` +
-        (registerDate ? `- 등록일자: ${registerDate}` : '');
+      message =
+        `• 검색어: '${word}'\n` +
+        `• 등록 여부: 관련 등록 특허/실용 공보가 있습니다.\n` +
+        `• 발명의 명칭: ${inventionTitle || '정보 없음'}\n` +
+        `• 출원인: ${applicantName || '정보 없음'}\n` +
+        `• 등록번호: ${registerNumber || '정보 없음'}\n` +
+        (registerDate ? `• 등록일자: ${registerDate}` : '');
     } else {
-      message = `특허·실용 공보 요약\n` +
-        `- 검색어: '${word}'\n` +
-        `- 등록 여부: 관련 등록 특허/실용 공보는 확인되지 않았습니다.\n` +
-        `- 가장 근접한 발명의 명칭: ${inventionTitle || '정보 없음'}\n` +
-        (registerStatus ? `- 상태: ${registerStatus}` : '');
+      message =
+        `• 검색어: '${word}'\n` +
+        `• 등록 여부: 관련 등록 특허/실용 공보는 확인되지 않았습니다.\n` +
+        `• 가장 근접한 발명의 명칭: ${inventionTitle || '정보 없음'}\n` +
+        (registerStatus ? `• 상태: ${registerStatus}` : '');
     }
 
     return {

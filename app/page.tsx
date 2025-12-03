@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { logEvent } from '../lib/ga';
 
 export default function Home() {
   const [bizNum, setBizNum] = useState('');
@@ -29,6 +30,12 @@ export default function Home() {
       return;
     }
 
+    logEvent({
+      action: 'check_submit',
+      category: 'business_lookup',
+      label: bizNum.trim(),
+    });
+
     setLoading(true);
     setResult(null);
     setLoadingStep(0);
@@ -52,9 +59,20 @@ export default function Home() {
 
       const data = await res.json();
       setResult(data.data);
+
+      logEvent({
+        action: 'check_success',
+        category: 'business_lookup',
+        label: bizNum.trim(),
+      });
     } catch (error) {
       alert('조회 중 오류가 발생했습니다.');
       console.error(error);
+      logEvent({
+        action: 'check_error',
+        category: 'business_lookup',
+        label: bizNum.trim(),
+      });
     } finally {
       clearInterval(stepInterval);
       setLoading(false);
@@ -94,20 +112,23 @@ export default function Home() {
           </span>
           <span>CheckOn</span>
         </h1>
-        <p className="text-lg text-slate-500">
+        <p className="text-base md:text-lg text-slate-500">
           여러 공공 데이터를 한 번에 조회해 사업자 정보를 종합적으로 확인할 수 있는 도구입니다.
         </p>
       </div>
 
       {/* 검색 박스 */}
       <div className="max-w-xl mx-auto mb-12">
-        <form onSubmit={handleCheck} className="relative">
+        <form
+          onSubmit={handleCheck}
+          className="relative bg-white rounded-full shadow-[0_1px_6px_rgba(32,33,36,0.28)]"
+        >
           <input
             type="text"
             value={bizNum}
             onChange={(e) => setBizNum(e.target.value)}
             placeholder="사업자등록번호 (예: 1248100998)"
-            className="w-full px-6 py-4 text-lg bg-white border-2 border-slate-200 rounded-full shadow-md focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+            className="w-full px-6 py-4 text-lg bg-white border border-transparent rounded-full focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
           />
           <button
             type="submit"
@@ -117,11 +138,6 @@ export default function Home() {
             {loading ? `${loadingSteps[loadingStep]}` : '조회'}
           </button>
         </form>
-        {loading && (
-          <div className="mt-3 text-center text-sm text-slate-500">
-            {loadingSteps[loadingStep]}
-          </div>
-        )}
       </div>
 
       {/* 결과 */}
@@ -131,7 +147,8 @@ export default function Home() {
           {/* 1. 메인 카드 - 회사 정보 + 신뢰도 */}
           <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
             <div className="p-8">
-              <div className="flex flex-col md:flex-row md:items-stretch justify-between gap-6 mb-6">
+              <div className="flex flex-col gap-6 mb-6">
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                 <div className="flex-1">
                   {/* 상태 배지들 */}
                   <div className="flex flex-wrap gap-2 mb-4">
@@ -156,9 +173,9 @@ export default function Home() {
                     {result.businessInfo?.corpName || '회사명 정보 없음'}
                   </h2>
 
-                  {/* 주소 + 지도 */}
+                  {/* 주소 */}
                   {result.businessInfo?.address && (
-                    <div className="mb-4 space-y-3">
+                    <div className="mb-4">
                       <div className="flex items-start gap-2">
                         <span className="mt-1 inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-50 text-blue-600">
                           <svg
@@ -187,26 +204,15 @@ export default function Home() {
                             />
                           </svg>
                         </span>
-                        <p className="text-slate-600 text-lg">
+                        <p className="text-slate-600 text-base md:text-lg">
                           {result.businessInfo.address}
                         </p>
-                      </div>
-                      <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm h-56">
-                        <iframe
-                          title="사업자 위치 지도"
-                          src={`https://www.google.com/maps?q=${encodeURIComponent(
-                            result.businessInfo.address
-                          )}&output=embed`}
-                          className="w-full h-full border-0"
-                          loading="lazy"
-                          referrerPolicy="no-referrer-when-downgrade"
-                        />
                       </div>
                     </div>
                   )}
 
                   {/* 대표자 및 기본 정보 */}
-                <div className="flex flex-wrap gap-6 text-sm md:text-base">
+                  <div className="flex flex-wrap gap-6 text-sm md:text-base">
                     {result.businessInfo?.representative && (
                       <div>
                         <span className="text-slate-500">대표자</span>
@@ -223,28 +229,76 @@ export default function Home() {
                 </div>
 
                 {/* 신뢰도 점수 박스 */}
-                <div className="flex-shrink-0 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-8 border border-blue-200 flex flex-col justify-between min-h-full">
+                <div className="md:w-64 flex-shrink-0 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 md:p-8 border border-blue-200 flex flex-col justify-between self-start">
                   <div className="text-center">
-                    <div className="text-sm text-slate-600 font-bold mb-2">신뢰도 점수</div>
-                    <div className="text-5xl font-black text-blue-600">{result.safetyScore?.score || 0}</div>
-                    <div className="text-xs text-slate-500 mt-2">/ 100점</div>
+                    <div className="text-xs md:text-sm text-slate-600 font-bold mb-1 md:mb-2">
+                      신뢰도 점수
+                    </div>
+                    <div className="text-4xl md:text-5xl font-black text-blue-600">
+                      {result.safetyScore?.score || 0}
+                    </div>
+                    <div className="text-[11px] md:text-xs text-slate-500 mt-1 md:mt-2">
+                      / 100점
+                    </div>
                   </div>
                   {/* 점수 구성 */}
-                  <div className="mt-6 space-y-2 text-xs">
+                  <div className="mt-4 md:mt-6 space-y-1.5 text-[11px] md:text-xs">
                     <div className="flex justify-between text-slate-600">
                       <span>국세청</span>
-                      <span className="font-bold">{result.safetyScore?.breakdown?.nts || 0}점</span>
+                      <span className="font-bold">
+                        {result.safetyScore?.breakdown?.nts || 0}점
+                      </span>
                     </div>
                     <div className="flex justify-between text-slate-600">
                       <span>공정위</span>
-                      <span className="font-bold">{result.safetyScore?.breakdown?.ftc || 0}점</span>
+                      <span className="font-bold">
+                        {result.safetyScore?.breakdown?.ftc || 0}점
+                      </span>
                     </div>
                     <div className="flex justify-between text-slate-600">
                       <span>특허청</span>
-                      <span className="font-bold">{result.safetyScore?.breakdown?.kipris || 0}점</span>
+                      <span className="font-bold">
+                        {result.safetyScore?.breakdown?.kipris || 0}점
+                      </span>
                     </div>
                   </div>
+                  <div className="mt-3 md:mt-4 text-[10px] md:text-[11px] text-slate-500 text-left space-y-0.5">
+                    <p className="font-semibold text-slate-600">참고 링크</p>
+                    {result.businessInfo?.domain && result.businessInfo.domain.length > 0 ? (
+                      result.businessInfo.domain.slice(0, 2).map((url: string, idx: number) => (
+                        <p key={idx}>
+                          •{' '}
+                          <a
+                            href={url.startsWith('http') ? url : `https://${url}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline break-all"
+                          >
+                            {url}
+                          </a>
+                        </p>
+                      ))
+                    ) : (
+                      <p>• 참고할 수 있는 공식 웹사이트 정보가 없습니다.</p>
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              {/* 지도 */}
+              {result.businessInfo?.address && (
+                <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm h-56">
+                  <iframe
+                    title="사업자 위치 지도"
+                    src={`https://www.google.com/maps?q=${encodeURIComponent(
+                      result.businessInfo.address
+                    )}&output=embed`}
+                    className="w-full h-full border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+              )}
               </div>
 
               {/* 기업 정보 요약 */}
@@ -315,9 +369,9 @@ export default function Home() {
                   <dt className="text-slate-600">통신판매업 신고</dt>
                   <dd
                     className={`font-bold ${
-                      result.onlineLicense?.includes('확인')
-                        ? 'text-green-600'
-                        : 'text-slate-400'
+                    result.onlineLicense?.includes('확인')
+                      ? 'text-green-600'
+                      : 'text-slate-400'
                     }`}
                   >
                     {result.onlineLicense?.includes('확인')
@@ -389,34 +443,32 @@ export default function Home() {
                 <span>세무 정보</span>
               </h3>
               <dl className="space-y-4">
-                {result.businessInfo?.startDt && (
                   <div className="flex justify-between items-center">
                     <dt className="text-slate-600">개업일자</dt>
-                    <dd className="font-medium text-slate-900">{result.businessInfo.startDt}</dd>
+                  <dd className="font-medium text-slate-900">
+                    {result.businessInfo?.startDt || '정보 없음'}
+                  </dd>
                   </div>
-                )}
-                {result.businessInfo?.taxType && (
                   <div className="flex justify-between items-center">
                     <dt className="text-slate-600">과세 유형</dt>
-                    <dd className="font-medium text-slate-900">{result.businessInfo.taxType}</dd>
+                  <dd className="font-medium text-slate-900">
+                    {result.businessInfo?.taxType || '정보 없음'}
+                  </dd>
                   </div>
-                )}
-                {result.businessInfo?.utccYn && (
                   <div className="flex justify-between items-center">
                     <dt className="text-slate-600">세금계산서</dt>
-                    <dd
-                      className={`font-bold ${
-                        result.businessInfo.utccYn === '가능'
-                          ? 'text-green-600'
-                          : 'text-slate-400'
-                      }`}
-                    >
-                      {result.businessInfo.utccYn === '가능'
-                        ? '발행 가능 (국세청 정보 기준)'
-                        : '발행 불가 (국세청 정보 기준)'}
+                  <dd
+                    className={`font-bold ${
+                      result.businessInfo?.utccYn === '가능'
+                        ? 'text-green-600'
+                        : 'text-slate-400'
+                    }`}
+                  >
+                    {result.businessInfo?.utccYn === '가능'
+                      ? '발행 가능 (국세청 정보 기준)'
+                      : '발행 불가 또는 확인 불가 (국세청 정보 기준)'}
                     </dd>
                   </div>
-                )}
               </dl>
             </div>
 
@@ -502,7 +554,7 @@ export default function Home() {
                 </span>
                 <span>상표권 정보</span>
               </h3>
-              <p className="text-slate-700">
+              <p className="text-slate-700 text-sm md:text-base leading-relaxed whitespace-pre-line">
                 {result.brandRight || '자동 상표권 조회 기능은 현재 준비 중입니다. 특허청 KIPRIS에서 직접 상표권 등록 여부를 확인해 주세요.'}
               </p>
             </div>
@@ -541,7 +593,7 @@ export default function Home() {
                     </span>
                     <span>특허·실용 공보 요약</span>
                   </h3>
-                  <p className="text-sm text-slate-700 whitespace-pre-line">
+                  <p className="text-sm md:text-base text-slate-700 leading-relaxed whitespace-pre-line">
                     {result.sources.kiprisPatent.message}
                   </p>
                 </div>
@@ -576,7 +628,7 @@ export default function Home() {
                     </span>
                     <span>상표 행정처리 이력 요약</span>
                   </h3>
-                  <p className="text-sm text-slate-700 whitespace-pre-line">
+                  <p className="text-sm md:text-base text-slate-700 leading-relaxed whitespace-pre-line">
                     {result.sources.kiprisTmHistory.message}
                   </p>
                 </div>
@@ -797,7 +849,7 @@ export default function Home() {
           {/* 4. 하단 정보 */}
           <div className="text-center text-xs text-slate-400 mt-8">
             <p>최종 조회일시: {new Date().toLocaleString('ko-KR')}</p>
-            <p>CheckOn - 데이터로 증명하는 가장 확실한 신뢰</p>
+            {/* <p>CheckOn - 데이터로 증명하는 가장 확실한 신뢰</p> */}
           </div>
         </div>
       )}
