@@ -848,7 +848,7 @@ function generateTrustReasonsSummary(
     ? trustReasons.join('\n') + '\n\n이를 바탕으로 일정 수준의 신뢰도를 확인할 수 있습니다.'
     : '조회된 기본 정보를 참고하여 거래 여부를 판단하시기 바랍니다.';
 
-  return urls;
+  return finalSummary;
 }
 
 function generateVerificationBadges(
