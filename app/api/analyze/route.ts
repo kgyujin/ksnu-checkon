@@ -150,7 +150,7 @@ async function fetchCompanyDetailsFromFTC(bizNumber: string): Promise<ApiRespons
     return createErrorApiResponse('API 키 오류');
   }
 
-  const ftcApiUrl = buildFTCRequestUrl(apiKey, bizNumber);
+  const ftcApiUrl = buildFTCRequestUrl(apiKey as string, bizNumber);
 
   try {
     console.log('🚀 [FTC] 공정위 API 호출:', bizNumber);
@@ -209,7 +209,7 @@ async function verifyCompanyStatusWithNTS(bizNumber: string): Promise<ApiRespons
   }
 
   try {
-    const ntsUrl = buildNTSRequestUrl(apiKey);
+    const ntsUrl = buildNTSRequestUrl(apiKey as string);
     const response = await executeNTSApiRequest(ntsUrl, bizNumber);
     
     if (!response.ok) {
@@ -307,6 +307,7 @@ async function searchCompanyIPAssets(companyName: string, companyInfo: CompanyIn
   let historyResult: ApiResponse = { 
     status: 'Skip', 
     message: '출원번호 없음',
+    data: {},
     raw: null 
   };
   
@@ -323,6 +324,7 @@ async function searchTrademarksByName(brandName: string, companyInfo: CompanyInf
     return { 
       status: 'Skip', 
       message: '검색어 없음',
+      data: {},
       raw: null 
     };
   }
@@ -339,7 +341,7 @@ async function searchTrademarksByName(brandName: string, companyInfo: CompanyInf
     );
   }
 
-  const kiprisUrl = buildKIPRISTrademarkSearchUrl(apiKey, brandName);
+  const kiprisUrl = buildKIPRISTrademarkSearchUrl(apiKey as string, brandName);
 
   try {
     console.log('🚀 [KIPRIS] 상표 검색 호출:', brandName);
@@ -363,6 +365,7 @@ async function searchPatentsByName(companyName: string, companyInfo: CompanyInfo
     return { 
       status: 'Skip', 
       message: '검색어 없음',
+      data: {},
       raw: null 
     };
   }
@@ -374,7 +377,7 @@ async function searchPatentsByName(companyName: string, companyInfo: CompanyInfo
     );
   }
 
-  const kiprisUrl = buildKIPRISPatentSearchUrl(apiKey, companyName);
+  const kiprisUrl = buildKIPRISPatentSearchUrl(apiKey as string, companyName);
 
   try {
     console.log('🚀 [KIPRIS] 특허/실용 검색 호출:', companyName);
@@ -403,7 +406,7 @@ async function searchTrademarkHistoryByApplicationNumber(
     );
   }
 
-  const kiprisUrl = buildKIPRISTrademarkHistoryUrl(apiKey, applicationNumber);
+  const kiprisUrl = buildKIPRISTrademarkHistoryUrl(apiKey as string, applicationNumber);
 
   try {
     console.log('🚀 [KIPRIS] 상표 행정처리 이력 조회:', applicationNumber);
@@ -470,6 +473,7 @@ function parseKIPRISTrademarkXmlResponse(xmlText: string, brandName: string, com
     return {
       status: 'NotFound',
       message: '해당 명칭으로 조회된 상표 출원/등록 정보가 없습니다.',
+      data: {},
       raw: xmlText
     };
   }
@@ -480,6 +484,7 @@ function parseKIPRISTrademarkXmlResponse(xmlText: string, brandName: string, com
     return {
       status: 'NotFound',
       message: `조회된 상표는 검색 대상 회사('${companyInfo.corpName}')가 출원한 것이 아닙니다. (출원인: ${trademarkInfo.applicantName})`,
+      data: {},
       raw: xmlText
     };
   }
@@ -490,6 +495,7 @@ function parseKIPRISTrademarkXmlResponse(xmlText: string, brandName: string, com
   return {
     status: 'OK',
     message: trademarkMessage,
+    data: { applicationNumber },
     applicationNumber,
     raw: xmlText
   };
@@ -508,6 +514,7 @@ function parseKIPRISPatentXmlResponse(xmlText: string, companyName: string, comp
     return {
       status: 'NotFound',
       message: '해당 단어로 조회된 특허·실용 공보가 없습니다.',
+      data: {},
       raw: xmlText
     };
   }
@@ -518,6 +525,7 @@ function parseKIPRISPatentXmlResponse(xmlText: string, companyName: string, comp
     return {
       status: 'NotFound',
       message: `조회된 특허는 검색 대상 회사('${companyInfo.corpName}')가 출원한 것이 아닙니다. (출원인: ${patentInfo.applicantName})`,
+      data: {},
       raw: xmlText
     };
   }
@@ -527,6 +535,7 @@ function parseKIPRISPatentXmlResponse(xmlText: string, companyName: string, comp
   return {
     status: 'OK',
     message: patentMessage,
+    data: {},
     raw: xmlText
   };
 }
@@ -544,6 +553,7 @@ function parseKIPRISTrademarkHistoryXmlResponse(xmlText: string): ApiResponse {
     return {
       status: 'NotFound',
       message: '해당 출원번호에 대한 행정처리 이력이 없습니다.',
+      data: {},
       raw: xmlText
     };
   }
@@ -560,6 +570,7 @@ function parseKIPRISTrademarkHistoryXmlResponse(xmlText: string): ApiResponse {
   return {
     status: 'OK',
     message: historyMessage,
+    data: {},
     raw: xmlText
   };
 }
@@ -775,7 +786,7 @@ function calculateTrustScore(
 // }
 
 function isTrademarkRegistered(message: string): boolean {
-  return message && (message.includes('등록') || message.includes('있음'));
+  return !!(message && (message.includes('등록') || message.includes('있음')));
 }
 
 function formatDateString(dateStr: string): string {
@@ -923,6 +934,7 @@ function generateTrademarkMockResponse(brandName: string): ApiResponse {
     message: hasTrademarkRegistration
       ? '등록된 상표권이 있습니다.'
       : '상표권 정보가 없습니다.',
+    data: {},
     raw: null
   };
 }

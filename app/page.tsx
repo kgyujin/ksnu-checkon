@@ -201,7 +201,7 @@ function SearchForm({
 interface ResultSectionProps {
   data: any;
   expandedSections: Record<string, boolean>;
-  onToggleSection: (section: string) => void;
+  onToggleSection: (section: "nts" | "ftc" | "tm" | "kiprisExtra") => void;
 }
 
 /**
@@ -663,7 +663,7 @@ function IPAssetSummaryCard({ title, message }: { title: string; message: string
 interface RawDataSectionProps {
   data: any;
   expandedSections: Record<string, boolean>;
-  onToggleSection: (section: string) => void;
+  onToggleSection: (section: "nts" | "ftc" | "tm" | "kiprisExtra") => void;
 }
 
 function RawDataSection({ data, expandedSections, onToggleSection }: RawDataSectionProps) {
