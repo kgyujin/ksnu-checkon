@@ -2,20 +2,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc; /* Slate-50 */
-  --foreground: #0f172a; /* Slate-900 */
+  --background: #f8fafc;
+  --foreground: #0f172a;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  /* 폰트 적용: Pretendard를 기본 폰트로 사용 */
   font-family: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 스크롤바 커스텀 */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -30,7 +28,6 @@ body {
   background: #94a3b8;
 }
 
-/* 애니메이션 정의 */
 @keyframes blob {
   0%, 100% {
     transform: translate(0, 0) scale(1);

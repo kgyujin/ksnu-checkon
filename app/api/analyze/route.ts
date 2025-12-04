@@ -1,5 +1,15 @@
 import { NextResponse } from 'next/server';
 
+const API_TIMEOUT = 15000;
+const LOADING_STEP_INTERVAL = 1500;
+const MAX_DOMAIN_COUNT = 5;
+
+const SCORE_WEIGHTS = {
+  NTS: 50,
+  FTC: 30,
+  KIPRIS: 20
+};
+
 interface AnalysisRequestBody {
   bizNumber?: string;
   ftcNumber?: string;
@@ -30,12 +40,7 @@ interface ApiResponse {
   raw?: any;
 }
 
-/**
- * 3단계 교차 검증 배지
- * - verification1: 국세청 '계속사업자' 확인
- * - verification2: 공정위 신고 정보 일치 확인
- * - verification3: 사업 지속성 (개업일 또는 IP 보유) 확인
- */
+// 배지
 interface VerificationBadge {
   verification1: {
     name: string;
@@ -173,33 +178,28 @@ function mergeCompanyInfoWithNTSData(
 async function fetchCompanyDetailsFromFTC(bizNumber: string): Promise<ApiResponse> {
   const apiKey = process.env.FTC_API_KEY;
   
-  if (!validateApiKeyExists(apiKey, 'FTC_API_KEY')) {
+  if (!hasApiKey(apiKey)) {
     return createErrorApiResponse('API 키 오류');
   }
 
   const ftcApiUrl = buildFTCRequestUrl(apiKey as string, bizNumber);
 
   try {
-    console.log('🚀 [FTC] 공정위 API 호출:', bizNumber);
-    
-    const response = await executeApiRequestWithTimeout(ftcApiUrl, 15000);
+    const response = await executeApiRequestWithTimeout(ftcApiUrl, API_TIMEOUT);
     
     if (!response.ok) {
-      console.error(`❌ [FTC] API 오류: ${response.status}`);
       return createErrorApiResponse('공정위 서버 응답 오류');
     }
 
     const responseData = await response.json();
-    const companyItems = extractCompanyItemsFromFTCResponse(responseData);
+    const companyItems = extractFTCItems(responseData);
 
     if (companyItems.length > 0) {
       return createSuccessApiResponse('통신판매업 신고 확인됨', companyItems[0]);
     } else {
-      console.log('[FTC] 등록된 정보 없음');
       return createSuccessApiResponse('통신판매업 미등록', {}, 'NONE');
     }
   } catch (error) {
-    console.error('❌ [FTC] Fetch 오류:', error);
     return createErrorApiResponse('공정위 API 연결 오류');
   }
 }
@@ -216,22 +216,21 @@ function buildFTCRequestUrl(apiKey: string, bizNumber: string): string {
   return `${baseUrl}?${params.toString()}`;
 }
 
-function extractCompanyItemsFromFTCResponse(data: any): any[] {
-  let items = data.items || data.response?.body?.items || [];
-  return Array.isArray(items) ? items : (items ? [items] : []);
+function extractFTCItems(data: any): any[] {
+  const items = data.items || data.response?.body?.items || [];
+  return Array.isArray(items) ? items : [items].filter(Boolean);
 }
 
 async function verifyCompanyStatusWithNTS(bizNumber: string): Promise<ApiResponse> {
   const isMockMode = process.env.USE_MOCK_NTS === 'true';
 
   if (isMockMode) {
-    console.log('📢 [NTS] Mock 모드 실행');
     return generateNTSMockResponse(bizNumber);
   }
 
   const apiKey = process.env.NTS_API_KEY;
   
-  if (!validateApiKeyExists(apiKey, 'NTS_API_KEY')) {
+  if (!hasApiKey(apiKey)) {
     return createErrorApiResponse('국세청 API 키 오류');
   }
 
@@ -240,14 +239,12 @@ async function verifyCompanyStatusWithNTS(bizNumber: string): Promise<ApiRespons
     const response = await executeNTSApiRequest(ntsUrl, bizNumber);
     
     if (!response.ok) {
-      console.error(`❌ [NTS] API 오류: ${response.status}`);
       return createErrorApiResponse('국세청 API 오류');
     }
 
     const result = await response.json();
     return parseNTSApiResponse(result);
   } catch (error) {
-    console.error('❌ [NTS] Fetch 오류:', error);
     return createErrorApiResponse('국세청 API 연결 오류');
   }
 }
@@ -362,27 +359,22 @@ async function searchTrademarksByName(brandName: string, companyInfo: CompanyInf
   }
 
   const apiKey = process.env.KIPRIS_API_KEY;
-  if (!validateApiKeyExists(apiKey, 'KIPRIS_API_KEY')) {
-    return createConfigErrorApiResponse(
-      '특허청(KIPRIS) API 키가 설정되지 않았습니다. 관리자에게 문의해 주세요.'
-    );
+  if (!hasApiKey(apiKey)) {
+    return createErrorApiResponse('KIPRIS API 키 미설정');
   }
 
   const kiprisUrl = buildKIPRISTrademarkSearchUrl(apiKey as string, brandName);
 
   try {
-    console.log('🚀 [KIPRIS] 상표 검색 호출:', brandName);
     const response = await fetch(kiprisUrl, { method: 'GET' });
     const xmlResponseText = await response.text();
 
     if (!response.ok) {
-      console.error('❌ [KIPRIS] HTTP 오류:', response.status);
       return createErrorApiResponse('특허청 상표 API 응답 오류');
     }
 
     return parseKIPRISTrademarkXmlResponse(xmlResponseText, brandName, companyInfo);
   } catch (error) {
-    console.error('❌ [KIPRIS] Fetch 오류:', error);
     return createErrorApiResponse('특허청 상표 API 연결 오류');
   }
 }
@@ -398,27 +390,22 @@ async function searchPatentsByName(companyName: string, companyInfo: CompanyInfo
   }
 
   const apiKey = process.env.KIPRIS_API_KEY;
-  if (!validateApiKeyExists(apiKey, 'KIPRIS_API_KEY')) {
-    return createConfigErrorApiResponse(
-      'KIPRIS API 키 미설정으로 특허·실용 조회를 수행할 수 없습니다.'
-    );
+  if (!hasApiKey(apiKey)) {
+    return createErrorApiResponse('KIPRIS API 키 미설정');
   }
 
   const kiprisUrl = buildKIPRISPatentSearchUrl(apiKey as string, companyName);
 
   try {
-    console.log('🚀 [KIPRIS] 특허/실용 검색 호출:', companyName);
     const response = await fetch(kiprisUrl, { method: 'GET' });
     const xmlResponseText = await response.text();
 
     if (!response.ok) {
-      console.error('❌ [KIPRIS] 특허/실용 HTTP 오류:', response.status);
       return createErrorApiResponse('특허·실용 공개·등록공보 API 응답 오류');
     }
 
     return parseKIPRISPatentXmlResponse(xmlResponseText, companyName, companyInfo);
   } catch (error) {
-    console.error('❌ [KIPRIS] 특허/실용 Fetch 오류:', error);
     return createErrorApiResponse('특허·실용 공개·등록공보 API 연결 오류');
   }
 }
@@ -427,27 +414,22 @@ async function searchTrademarkHistoryByApplicationNumber(
   applicationNumber: string
 ): Promise<ApiResponse> {
   const apiKey = process.env.KIPRIS_API_KEY;
-  if (!validateApiKeyExists(apiKey, 'KIPRIS_API_KEY')) {
-    return createConfigErrorApiResponse(
-      'KIPRIS API 키 미설정으로 상표 행정처리 이력을 조회할 수 없습니다.'
-    );
+  if (!hasApiKey(apiKey)) {
+    return createErrorApiResponse('KIPRIS API 키 미설정');
   }
 
   const kiprisUrl = buildKIPRISTrademarkHistoryUrl(apiKey as string, applicationNumber);
 
   try {
-    console.log('🚀 [KIPRIS] 상표 행정처리 이력 조회:', applicationNumber);
     const response = await fetch(kiprisUrl, { method: 'GET' });
     const xmlResponseText = await response.text();
 
     if (!response.ok) {
-      console.error('❌ [KIPRIS] 상표 이력 HTTP 오류:', response.status);
       return createErrorApiResponse('상표 행정처리 이력 API 응답 오류');
     }
 
     return parseKIPRISTrademarkHistoryXmlResponse(xmlResponseText);
   } catch (error) {
-    console.error('❌ [KIPRIS] 상표 이력 Fetch 오류:', error);
     return createErrorApiResponse('상표 행정처리 이력 API 연결 오류');
   }
 }
@@ -510,7 +492,6 @@ function parseKIPRISTrademarkXmlResponse(xmlText: string, brandName: string, com
     return isApplicantMatching(trademarkInfo.applicantName, companyInfo);
   });
 
-  // 출원인 매칭되는 항목이 있으면 반환
   if (validItems.length > 0) {
     const firstValidItemXml = validItems[0];
     const trademarkInfo = extractTrademarkInfoFromXml(firstValidItemXml);
@@ -558,7 +539,6 @@ function parseKIPRISPatentXmlResponse(xmlText: string, companyName: string, comp
     return isApplicantMatching(patentInfo.applicantName, companyInfo);
   });
 
-  // 출원인 매칭되는 항목이 있으면 반환
   if (validItems.length > 0) {
     const firstValidItemXml = validItems[0];
     const patentInfo = extractPatentInfoFromXml(firstValidItemXml);
@@ -630,9 +610,6 @@ function extractFirstXmlElement(xml: string, elementName: string): string | null
   return match ? match[1] : null;
 }
 
-/**
- * XML에서 지정된 태그의 모든 요소를 배열로 추출
- */
 function extractAllXmlElements(xml: string, elementName: string): string[] {
   if (!xml) return [];
   const regex = new RegExp(`<${elementName}>([\\s\\S]*?)<\\/${elementName}>`, 'g');
@@ -649,48 +626,26 @@ function isApplicantMatching(applicantName: string, companyInfo: CompanyInformat
     return false;
   }
 
-  // [엄격한 매칭] 기업명 정규화 후 정확히 일치하는 경우만 인정
   const normalizeCompanyName = (name: string): string => {
     return name
       .toLowerCase()
-      .replace(/\(주\)/g, '')      // (주) 제거
-      .replace(/\(유\)/g, '')      // (유) 제거
-      .replace(/\(사\)/g, '')      // (사) 제거
-      .replace(/주식회사/g, '')    // 주식회사 제거
-      .replace(/유한회사/g, '')    // 유한회사 제거
-      .replace(/\s+/g, '')         // 모든 공백 제거
-      .replace(/[.,\-_]/g, '')     // 특수문자 제거
+      .replace(/\(주\)/g, '')
+      .replace(/\(유\)/g, '')
+      .replace(/\(사\)/g, '')
+      .replace(/주식회사/g, '')
+      .replace(/유한회사/g, '')
+      .replace(/\s+/g, '')
+      .replace(/[.,\-_]/g, '')
       .trim();
   };
 
   const normalizedApplicant = normalizeCompanyName(applicantName);
   const normalizedCompany = normalizeCompanyName(companyInfo.corpName);
 
-  // 정규화된 회사명이 정확히 일치하는 경우만 true
   return normalizedApplicant === normalizedCompany;
 }
 
-function levenshteinDistance(str1: string, str2: string): number {
-  const len1 = str1.length;
-  const len2 = str2.length;
-  const matrix: number[][] = Array(len2 + 1).fill(null).map(() => Array(len1 + 1).fill(0));
 
-  for (let i = 0; i <= len1; i++) matrix[0][i] = i;
-  for (let i = 0; i <= len2; i++) matrix[i][0] = i;
-
-  for (let i = 1; i <= len2; i++) {
-    for (let j = 1; j <= len1; j++) {
-      const cost = str1[j - 1] === str2[i - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i][j - 1] + 1,
-        matrix[i - 1][j] + 1,
-        matrix[i - 1][j - 1] + cost
-      );
-    }
-  }
-
-  return matrix[len2][len1];
-}
 
 interface TrademarkInfo {
   title: string;
@@ -774,32 +729,6 @@ function generatePatentSummaryMessage(
     (info.registerStatus ? `• 상태: ${info.registerStatus}` : '');
 }
 
-// function calculateTrustScore(
-//   ntsResult: ApiResponse,
-//   ftcResult: ApiResponse,
-//   trademarkResult: ApiResponse
-// ): SafetyScore {
-//   let score = 0;
-//   const breakdown: SafetyScoreBreakdown = { nts: 0, ftc: 0, kipris: 0 };
-//
-//   if (ntsResult.isValid) {
-//     score += 50;
-//     breakdown.nts = 50;
-//   }
-//
-//   if (ftcResult.status === 'OK') {
-//     score += 30;
-//     breakdown.ftc = 30;
-//   }
-//
-//   if (isTrademarkRegistered(trademarkResult.message)) {
-//     score += 20;
-//     breakdown.kipris = 20;
-//   }
-//
-//   return { score, breakdown };
-// }
-
 function calculateTrustScore(
   ntsResult: ApiResponse,
   ftcResult: ApiResponse,
@@ -809,18 +738,18 @@ function calculateTrustScore(
   const breakdown: SafetyScoreBreakdown = { nts: 0, ftc: 0, kipris: 0 };
 
   if (ntsResult.isValid) {
-    score += 50;
-    breakdown.nts = 50;
+    score += SCORE_WEIGHTS.NTS;
+    breakdown.nts = SCORE_WEIGHTS.NTS;
   }
 
   if (ftcResult.status === 'OK') {
-    score += 30;
-    breakdown.ftc = 30;
+    score += SCORE_WEIGHTS.FTC;
+    breakdown.ftc = SCORE_WEIGHTS.FTC;
   }
 
   if (isTrademarkRegistered(trademarkResult.message)) {
-    score += 20;
-    breakdown.kipris = 20;
+    score += SCORE_WEIGHTS.KIPRIS;
+    breakdown.kipris = SCORE_WEIGHTS.KIPRIS;
   }
 
   return {
@@ -828,7 +757,6 @@ function calculateTrustScore(
     breakdown
   };
 }
-// }
 
 function isTrademarkRegistered(message: string): boolean {
   return !!(message && (message.includes('등록') || message.includes('있음')));
@@ -852,7 +780,7 @@ function parseDomainUrls(urlString: string): string[] {
           url.startsWith('https://') ||
           url.match(/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/))
     )
-    .slice(0, 5);
+    .slice(0, MAX_DOMAIN_COUNT);
   
   return urls;
 }
@@ -920,13 +848,9 @@ function generateTrustReasonsSummary(
     ? trustReasons.join('\n') + '\n\n이를 바탕으로 일정 수준의 신뢰도를 확인할 수 있습니다.'
     : '조회된 기본 정보를 참고하여 거래 여부를 판단하시기 바랍니다.';
 
-  return finalSummary;
+  return urls;
 }
 
-/**
- * 3단계 교차 검증 배지 생성
- * 심사위원 피드백: '신뢰'라는 추상적 개념 대신 '검증(Verified)'이라는 객관적 근거 제시
- */
 function generateVerificationBadges(
   companyInfo: CompanyInformation,
   ntsResult: ApiResponse,
@@ -935,7 +859,6 @@ function generateVerificationBadges(
   patentResult: ApiResponse
 ): VerificationBadge {
   
-  // 검증 1: 국세청 '계속사업자' 확인
   const isContinuingBusiness = companyInfo.ntsStatus?.includes('계속');
   const verification1 = {
     name: '실존성 검증',
@@ -945,7 +868,6 @@ function generateVerificationBadges(
       : '국세청 상태 미확인 또는 정상 운영 상태 아님'
   };
 
-  // 검증 2: 공정위 신고 정보와 국세청 정보 일치
   const ftcRegistered = ftcResult.status === 'OK';
   const hasDomain = companyInfo.domain && companyInfo.domain.length > 0;
   const verification2 = {
@@ -956,7 +878,6 @@ function generateVerificationBadges(
       : '공정위 신고 미완료 또는 웹사이트 미운영'
   };
 
-  // 검증 3: 사업 지속성 - 개업일 기준 5년 이상 또는 IP 보유
   const hasIntellectualProperty = trademarkResult.status === 'OK' || patentResult.status === 'OK';
   const operatingYears = calculateOperatingYears(companyInfo.startDt);
   const isLongTermBusiness = operatingYears >= 5;
@@ -971,7 +892,6 @@ function generateVerificationBadges(
       : '사업 운영 기간 및 IP 정보 미확인'
   };
 
-  // 종합 검증 결과
   const verificationCount = [verification1, verification2, verification3]
     .filter(v => v.verified).length;
   
@@ -1013,12 +933,8 @@ function extractLocationFromAddress(address: string): string {
   return parts.slice(0, 2).join(' ') || address;
 }
 
-function validateApiKeyExists(apiKey: string | undefined, keyName: string): boolean {
-  if (!apiKey) {
-    console.error(`❌ ${keyName} 환경변수 미설정`);
-    return false;
-  }
-  return true;
+function hasApiKey(apiKey: string | undefined): boolean {
+  return !!apiKey;
 }
 
 async function executeApiRequestWithTimeout(
@@ -1051,9 +967,7 @@ function createErrorApiResponse(message: string): ApiResponse {
   return { status: 'ERROR', message, data: {} };
 }
 
-function createConfigErrorApiResponse(message: string): ApiResponse {
-  return { status: 'ConfigError', message, data: {}, raw: null };
-}
+
 
 function generateTrademarkMockResponse(brandName: string): ApiResponse {
   const hasTrademarkRegistration = brandName.includes('테스트') || brandName.includes('삼성');

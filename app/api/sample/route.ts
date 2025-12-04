@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 
-/**
- * 실제 공공 API를 테스트할 수 있는 엔드포인트
- * /api/sample으로 접근하여 샘플 데이터 확인 가능
- */
+// /api/sample으로 접근하여 샘플 데이터 확인 가능
 export async function GET() {
   const results: any = {
     timestamp: new Date().toISOString(),
@@ -47,7 +44,7 @@ export async function GET() {
       error: e.message,
       note: '국세청 API 연결 실패'
     };
-    results.recommendations.push(`❌ 국세청 API 오류: ${e.message}`);
+    results.recommendations.push(`국세청 API 오류: ${e.message}`);
   }
 
   // 2. 공정위 API 상태 테스트
@@ -84,7 +81,7 @@ export async function GET() {
       error: e.message,
       note: '공정위 API 연결 실패'
     };
-    results.recommendations.push(`❌ 공정위 API 오류: ${e.message}`);
+    results.recommendations.push(`공정위 API 오류: ${e.message}`);
   }
 
   // 3. 특허청 상태
@@ -92,7 +89,7 @@ export async function GET() {
     note: '특허청 API는 별도 구현 필요',
     status: 'Pending'
   };
-  results.recommendations.push('⏳ 특허청: API 연동 준비 중');
+  results.recommendations.push('특허청: API 연동 준비 중');
 
   // 테스트 가능한 사업자등록번호
   results.testSuggestions = {

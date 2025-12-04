@@ -3,12 +3,6 @@
 import { useState } from 'react';
 import { logEvent } from '../lib/ga';
 
-/**
- * CheckOn - 사업자 신뢰도 종합 조회 시스템
- * 
- * 공정위(기업정보) → 국세청(상태검증) → 특허청(가치) 파이프라인 기반
- * 교차 검증을 통한 신뢰도 있는 사업자 정보 제공
- */
 export default function CheckOnPage() {
   const [inputBusinessNumber, setInputBusinessNumber] = useState('');
   const [analysisResult, setAnalysisResult] = useState<any>(null);
@@ -28,7 +22,7 @@ export default function CheckOnPage() {
     '종합 신뢰도 점수 산출 중...'
   ];
 
-  const handleSubmitBusinessNumberForm = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const cleanedBusinessNumber = inputBusinessNumber.trim();
@@ -37,11 +31,11 @@ export default function CheckOnPage() {
       return;
     }
 
-    recordBusinessLookupInitiation(cleanedBusinessNumber);
-    await performBusinessAnalysis(cleanedBusinessNumber);
+    logAnalyticsEvent('check_submit', cleanedBusinessNumber);
+    await analyze(cleanedBusinessNumber);
   };
 
-  async function performBusinessAnalysis(bizNumber: string): Promise<void> {
+  async function analyze(bizNumber: string): Promise<void> {
     setIsAnalysisLoading(true);
     setAnalysisResult(null);
     setCurrentLoadingStep(0);
@@ -57,48 +51,31 @@ export default function CheckOnPage() {
     }, 1500);
 
     try {
-      const analysisData = await fetchBusinessAnalysisFromServer(bizNumber);
+      const analysisData = await fetchAnalysis(bizNumber);
       setAnalysisResult(analysisData.data);
-      recordBusinessLookupSuccess(bizNumber);
+      logAnalyticsEvent('check_success', bizNumber);
     } catch (error) {
       alert('조회 중 오류가 발생했습니다.');
-      console.error(error);
-      recordBusinessLookupError(bizNumber);
+      logAnalyticsEvent('check_error', bizNumber);
     } finally {
       clearInterval(stepAnimationInterval);
       setIsAnalysisLoading(false);
     }
   }
 
-  async function fetchBusinessAnalysisFromServer(bizNumber: string): Promise<any> {
+  async function fetchAnalysis(bizNumber: string): Promise<any> {
     const response = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bizNumber: bizNumber }),
+      body: JSON.stringify({ bizNumber }),
     });
 
     return response.json();
   }
 
-  function recordBusinessLookupInitiation(bizNumber: string): void {
+  function logAnalyticsEvent(action: string, bizNumber: string): void {
     logEvent({
-      action: 'check_submit',
-      category: 'business_lookup',
-      label: bizNumber,
-    });
-  }
-
-  function recordBusinessLookupSuccess(bizNumber: string): void {
-    logEvent({
-      action: 'check_success',
-      category: 'business_lookup',
-      label: bizNumber,
-    });
-  }
-
-  function recordBusinessLookupError(bizNumber: string): void {
-    logEvent({
-      action: 'check_error',
+      action,
       category: 'business_lookup',
       label: bizNumber,
     });
@@ -117,7 +94,7 @@ export default function CheckOnPage() {
       <SearchForm
         inputValue={inputBusinessNumber}
         onInputChange={setInputBusinessNumber}
-        onSubmit={handleSubmitBusinessNumberForm}
+        onSubmit={handleSubmit}
         isLoading={isAnalysisLoading}
         currentLoadingStepText={loadingSteps[currentLoadingStep]}
       />
@@ -132,9 +109,7 @@ export default function CheckOnPage() {
   );
 }
 
-/**
- * 헤더 영역: 애플리케이션 소개
- */
+// 헤더
 function HeaderSection() {
   return (
     <div className="max-w-3xl mx-auto text-center mb-8">
@@ -163,9 +138,7 @@ interface SearchFormProps {
   currentLoadingStepText: string;
 }
 
-/**
- * 검색 폼: 사업자등록번호 입력 및 조회
- */
+// 사업자등록번호 입력 및 조회
 function SearchForm({
   inputValue,
   onInputChange,
@@ -204,9 +177,7 @@ interface ResultSectionProps {
   onToggleSection: (section: "nts" | "ftc" | "tm" | "kiprisExtra") => void;
 }
 
-/**
- * 결과 영역: 조회 결과 전체 표시
- */
+// 조회 결과
 function ResultSection({ data, expandedSections, onToggleSection }: ResultSectionProps) {
   return (
     <div className="max-w-3xl mx-auto animate-fade-in-up space-y-6">
@@ -227,9 +198,7 @@ function ResultSection({ data, expandedSections, onToggleSection }: ResultSectio
   );
 }
 
-/**
- * 기업 프로필 카드: 회사 기본 정보
- */
+// 회사 기본 정보
 function CompanyProfileCard({ data }: { data: any }) {
   const businessInfo = data.businessInfo || {};
 
@@ -266,9 +235,6 @@ function CompanyProfileCard({ data }: { data: any }) {
   );
 }
 
-/**
- * 기업 기본 정보 표시
- */
 function CompanyBasicInfo({ businessInfo }: { businessInfo: any }) {
   return (
     <div className="flex-1">
@@ -292,7 +258,6 @@ function CompanyBasicInfo({ businessInfo }: { businessInfo: any }) {
         <AddressDisplay address={businessInfo.address} />
       )}
 
-      {/* 대표자 및 기본 정보 */}
       <div className="flex flex-wrap gap-6 text-sm md:text-base mt-4">
         {businessInfo.representative && (
           <InfoItem label="대표자" value={businessInfo.representative} />
@@ -305,9 +270,7 @@ function CompanyBasicInfo({ businessInfo }: { businessInfo: any }) {
   );
 }
 
-/**
- * 상태 배지 컴포넌트
- */
+// 상태 배지
 interface StatusBadgeProps {
   label: string;
   isActive: boolean;
@@ -328,9 +291,7 @@ function StatusBadge({ label, isActive, variant = 'default' }: StatusBadgeProps)
   );
 }
 
-/**
- * 주소 표시 컴포넌트
- */
+// 주소 표시
 function AddressDisplay({ address }: { address: string }) {
   return (
     <div className="mb-4">
@@ -350,9 +311,7 @@ function AddressDisplay({ address }: { address: string }) {
   );
 }
 
-/**
- * 정보 항목 컴포넌트
- */
+// 정보 항목
 interface InfoItemProps {
   label: string;
   value: string;
@@ -370,50 +329,7 @@ function InfoItem({ label, value, isMonospace = false }: InfoItemProps) {
   );
 }
 
-/**
- * 신뢰도 점수 카드 (비활성화됨)
- */
-// function TrustScoreCard({ score, businessInfo }: { score: any; businessInfo: any }) {
-//   return (
-//     <div className="md:w-64 flex-shrink-0 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 md:p-8 border border-blue-200 flex flex-col justify-between self-start">
-//       <div className="text-center">
-//         <div className="text-xs md:text-sm text-slate-600 font-bold mb-1 md:mb-2">
-//           신뢰도 점수
-//         </div>
-//         <div className="text-4xl md:text-5xl font-black text-blue-600">
-//           {score.score || 0}
-//         </div>
-//         <div className="text-[11px] md:text-xs text-slate-500 mt-1 md:mt-2">
-//           / 100점
-//         </div>
-//       </div>
-//
-//       <div className="mt-4 md:mt-6 space-y-1.5 text-[11px] md:text-xs">
-//         <ScoreBreakdownItem label="국세청" value={score.breakdown?.nts || 0} />
-//         <ScoreBreakdownItem label="공정위" value={score.breakdown?.ftc || 0} />
-//         <ScoreBreakdownItem label="특허청" value={score.breakdown?.kipris || 0} />
-//       </div>
-//
-//       <ReferenceLinksBox businessInfo={businessInfo} />
-//     </div>
-//   );
-// }
-
-/**
- * 신뢰도 점수 구성 항목 (비활성화됨)
- */
-// function ScoreBreakdownItem({ label, value }: { label: string; value: number }) {
-//   return (
-//     <div className="flex justify-between text-slate-600">
-//       <span>{label}</span>
-//       <span className="font-bold">{value}점</span>
-//     </div>
-//   );
-// }
-
-/**
- * 참고 링크 박스
- */
+// 참고 링크
 function ReferenceLinksBox({ businessInfo }: { businessInfo: any }) {
   const domains = businessInfo.domain || [];
 
@@ -441,12 +357,7 @@ function ReferenceLinksBox({ businessInfo }: { businessInfo: any }) {
   );
 }
 
-/**
- * 3단계 교차 검증 배지 시스템
- * 검증 1 (실존성): 국세청 계속사업자 ✅
- * 검증 2 (투명성): 공정위 신고 + 웹사이트 ✅
- * 검증 3 (지속성): 5년+ 운영 OR IP보유 ✅
- */
+// 배지
 function VerificationBadges({ badges }: { badges: any }) {
   if (!badges) return null;
 
@@ -488,9 +399,7 @@ function VerificationBadges({ badges }: { badges: any }) {
   );
 }
 
-/**
- * 개별 검증 배지 아이템
- */
+// 개별 검증 배지
 function VerificationBadgeItem({ name, verified, reason }: { name: string; verified: boolean; reason: string }) {
   return (
     <div className="flex items-start gap-3 bg-white rounded-lg p-3 border border-slate-200">
@@ -515,9 +424,7 @@ function VerificationBadgeItem({ name, verified, reason }: { name: string; verif
   );
 }
 
-/**
- * 기업 정보 요약 박스
- */
+// 기업 정보 요약
 function CompanySummaryBox({ summary }: { summary: string }) {
   return (
     <div className="bg-slate-50 rounded-xl p-6 border border-slate-200">
@@ -537,9 +444,7 @@ function CompanySummaryBox({ summary }: { summary: string }) {
   );
 }
 
-/**
- * 기업 상세 정보 그리드
- */
+// 기업 상세 정보 그리드
 function CompanyDetailsGrid({ data }: { data: any }) {
   const businessInfo = data.businessInfo || {};
 
@@ -555,9 +460,7 @@ function CompanyDetailsGrid({ data }: { data: any }) {
   );
 }
 
-/**
- * 전자상거래 정보 카드
- */
+// 전자상거래 정보
 function ECommerceInfoCard({ businessInfo, onlineLicense }: { businessInfo: any; onlineLicense: string }) {
   const isRegistered = onlineLicense?.includes('확인');
 
@@ -594,9 +497,7 @@ function ECommerceInfoCard({ businessInfo, onlineLicense }: { businessInfo: any;
   );
 }
 
-/**
- * 세무 정보 카드
- */
+// 세무 정보
 function TaxInfoCard({ businessInfo }: { businessInfo: any }) {
   const canIssueInvoice = businessInfo.utccYn === '가능';
 
@@ -613,9 +514,7 @@ function TaxInfoCard({ businessInfo }: { businessInfo: any }) {
   );
 }
 
-/**
- * 업종 정보 카드
- */
+// 업종 정보
 function BusinessTypeInfoCard({ businessInfo }: { businessInfo: any }) {
   return (
     <DetailCard title="업종 정보" icon="chart">
@@ -629,9 +528,7 @@ function BusinessTypeInfoCard({ businessInfo }: { businessInfo: any }) {
   );
 }
 
-/**
- * 상표권 정보 카드
- */
+// 상표권 정보
 function TrademarkInfoCard({ brandRight }: { brandRight: string }) {
   const message = brandRight || '자동 상표권 조회 기능은 현재 준비 중입니다. 특허청 KIPRIS에서 직접 상표권 등록 여부를 확인해 주세요.';
 
@@ -644,9 +541,7 @@ function TrademarkInfoCard({ brandRight }: { brandRight: string }) {
   );
 }
 
-/**
- * 일반 상세 카드
- */
+// 일반 상세
 interface DetailCardProps {
   title: string;
   icon?: string;
@@ -714,9 +609,7 @@ function DetailCard({ title, icon, children }: DetailCardProps) {
   );
 }
 
-/**
- * 상세 정보 항목
- */
+// 상세 정보
 interface DetailItemProps {
   label: string;
   value: string;
@@ -735,9 +628,7 @@ function DetailItem({ label, value, isHighlight = false, isMonospace = false }: 
   );
 }
 
-/**
- * IP 자산 요약 그리드
- */
+// IP 자산 요약
 function IPAssetsSummaryGrid({ data }: { data: any }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -757,9 +648,6 @@ function IPAssetsSummaryGrid({ data }: { data: any }) {
   );
 }
 
-/**
- * IP 자산 요약 카드
- */
 function IPAssetSummaryCard({ title, message }: { title: string; message: string }) {
   const renderIcon = () => {
     if (title.includes('특허')) {
@@ -796,9 +684,7 @@ function IPAssetSummaryCard({ title, message }: { title: string; message: string
   );
 }
 
-/**
- * 공공 데이터 상세 정보 섹션
- */
+// 공공 데이터 상세 정보
 interface RawDataSectionProps {
   data: any;
   expandedSections: Record<string, boolean>;
@@ -853,9 +739,7 @@ function RawDataSection({ data, expandedSections, onToggleSection }: RawDataSect
   );
 }
 
-/**
- * 펼칠 수 있는 상세 섹션
- */
+// 상세 섹션 토글
 interface ExpandableDetailSectionProps {
   title: string;
   content: any;
@@ -889,9 +773,7 @@ function ExpandableDetailSection({ title, content, isExpanded, onToggle }: Expan
   );
 }
 
-/**
- * 푸터
- */
+// 푸터
 function Footer() {
   return (
     <div className="text-center text-xs text-slate-400 mt-8">
@@ -900,16 +782,12 @@ function Footer() {
   );
 }
 
-/**
- * IP 자산 요약 표시 여부 판단
- */
+// IP 자산 요약 표시 여부 판단
 function shouldDisplayIPAssetsSummary(data: any): boolean {
   return !!(data.sources?.kiprisPatent || data.sources?.kiprisTmHistory);
 }
 
-/**
- * 업종 정보 표시 여부 판단
- */
+// 업종 정보 표시 여부 판단
 function shouldDisplayBusinessTypeInfo(businessInfo: any): boolean {
   return !!(businessInfo.bizType || businessInfo.bizItem);
 }

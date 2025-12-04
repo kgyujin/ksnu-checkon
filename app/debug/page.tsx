@@ -2,12 +2,6 @@
 
 import { useState, useEffect } from 'react';
 
-/**
- * CheckOn API 상태 확인 페이지
- * 
- * 공정위, 국세청, 특허청 API의 연결 상태를 종합적으로 확인
- * 개발 및 운영 환경에서 시스템 상태를 모니터링하기 위한 디버그 페이지
- */
 export default function APIStatusDebugPage() {
   const [apiStatusData, setApiStatusData] = useState<any>(null);
   const [isStatusLoading, setIsStatusLoading] = useState(true);
@@ -53,9 +47,6 @@ export default function APIStatusDebugPage() {
   );
 }
 
-/**
- * API 연결 상태 카드
- */
 function APIConnectionStatus({ apiStatusData }: { apiStatusData: any }) {
   const ntsStatus = apiStatusData?.apiStatus?.nts;
   const ftcStatus = apiStatusData?.apiStatus?.ftc;
@@ -74,9 +65,6 @@ function APIConnectionStatus({ apiStatusData }: { apiStatusData: any }) {
   );
 }
 
-/**
- * 개별 API 상태 카드
- */
 interface APIStatusCardProps {
   title: string;
   status: any;
@@ -103,9 +91,6 @@ function APIStatusCard({ title, status }: APIStatusCardProps) {
   );
 }
 
-/**
- * 상태 권장사항
- */
 function StatusRecommendations({ recommendations }: { recommendations: string[] }) {
   if (!recommendations || recommendations.length === 0) {
     return null;
@@ -125,9 +110,6 @@ function StatusRecommendations({ recommendations }: { recommendations: string[] 
   );
 }
 
-/**
- * 테스트 가능한 사업자번호
- */
 interface TestSuggestionsProps {
   note?: string;
   examples?: Array<{ number?: string; description: string; source: string }>;
@@ -159,9 +141,6 @@ function TestBizNumbers({ suggestions }: { suggestions: TestSuggestionsProps }) 
   );
 }
 
-/**
- * 원본 응답 데이터
- */
 function RawResponseData({ data }: { data: any }) {
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -173,9 +152,6 @@ function RawResponseData({ data }: { data: any }) {
   );
 }
 
-/**
- * 네비게이션 버튼
- */
 function NavigationButtons() {
   return (
     <div className="mt-8 text-center">
