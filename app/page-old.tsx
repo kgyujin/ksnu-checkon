@@ -164,7 +164,7 @@ function HeaderSection() {
         <span>CheckOn</span>
       </h1>
       <p className="text-base md:text-lg text-slate-500">
-        이 쇼핑몰, 믿고 사도 될까? 1초 만에 확인하기
+        믿어도 되는 곳일까? 1초 만에 확인하기
       </p>
     </div>
   );

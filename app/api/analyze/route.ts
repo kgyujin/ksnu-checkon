@@ -632,7 +632,6 @@ function extractFirstXmlElement(xml: string, elementName: string): string | null
 
 /**
  * XML에서 지정된 태그의 모든 요소를 배열로 추출
- * 예: <item>...</item><item>...</item> -> ['...', '...']
  */
 function extractAllXmlElements(xml: string, elementName: string): string[] {
   if (!xml) return [];
