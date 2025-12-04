@@ -164,7 +164,7 @@ function HeaderSection() {
         <span>CheckOn</span>
       </h1>
       <p className="text-base md:text-lg text-slate-500">
-        여러 공공 데이터를 한 번에 조회해 사업자 정보를 종합적으로 확인할 수 있는 도구입니다.
+        이 쇼핑몰, 믿고 사도 될까? 1초 만에 확인하기
       </p>
     </div>
   );

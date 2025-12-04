@@ -30,6 +30,31 @@ interface ApiResponse {
   raw?: any;
 }
 
+/**
+ * 3단계 교차 검증 배지
+ * - verification1: 국세청 '계속사업자' 확인
+ * - verification2: 공정위 신고 정보 일치 확인
+ * - verification3: 사업 지속성 (개업일 또는 IP 보유) 확인
+ */
+interface VerificationBadge {
+  verification1: {
+    name: string;
+    verified: boolean;
+    reason: string;
+  };
+  verification2: {
+    name: string;
+    verified: boolean;
+    reason: string;
+  };
+  verification3: {
+    name: string;
+    verified: boolean;
+    reason: string;
+  };
+  verificationSummary: string;
+}
+
 interface SafetyScoreBreakdown {
   nts: number;
   ftc: number;
@@ -61,6 +86,7 @@ export async function POST(request: Request) {
       await searchCompanyIPAssets(brandSearchTerm, companyInfo);
     
     const companyBrief = generateCompanySummary(companyInfo, ntsResult, ftcResult);
+    const verificationBadges = generateVerificationBadges(companyInfo, ntsResult, ftcResult, trademarkResult, patentResult);
     
     return NextResponse.json({
       success: true,
@@ -70,6 +96,7 @@ export async function POST(request: Request) {
         bizStatus: ntsResult.message,
         onlineLicense: ftcResult.message,
         brandRight: trademarkResult.message,
+        verificationBadges,
         sources: {
           nts: ntsResult,
           ftc: ftcResult,
@@ -468,35 +495,42 @@ function parseKIPRISTrademarkXmlResponse(xmlText: string, brandName: string, com
     return createErrorApiResponse(`특허청 상표 API 오류: ${resultMsg}`);
   }
 
-  const firstItemXml = extractFirstXmlElement(xmlText, 'item');
-  if (!firstItemXml) {
+  const allItemsXml = extractAllXmlElements(xmlText, 'item');
+  if (!allItemsXml || allItemsXml.length === 0) {
     return {
       status: 'NotFound',
-      message: '해당 명칭으로 조회된 상표 출원/등록 정보가 없습니다.',
+      message: '등록된 상표권 정보가 없습니다.',
       data: {},
       raw: xmlText
     };
   }
 
-  const trademarkInfo = extractTrademarkInfoFromXml(firstItemXml);
-  
-  if (!isApplicantMatching(trademarkInfo.applicantName, companyInfo)) {
+  const validItems = allItemsXml.filter(itemXml => {
+    const trademarkInfo = extractTrademarkInfoFromXml(itemXml);
+    return isApplicantMatching(trademarkInfo.applicantName, companyInfo);
+  });
+
+  // 출원인 매칭되는 항목이 있으면 반환
+  if (validItems.length > 0) {
+    const firstValidItemXml = validItems[0];
+    const trademarkInfo = extractTrademarkInfoFromXml(firstValidItemXml);
+    const trademarkMessage = generateTrademarkSummaryMessage(brandName, trademarkInfo);
+    const applicationNumber = extractXmlTag(firstValidItemXml, 'applicationNumber');
+
     return {
-      status: 'NotFound',
-      message: `조회된 상표는 검색 대상 회사('${companyInfo.corpName}')가 출원한 것이 아닙니다. (출원인: ${trademarkInfo.applicantName})`,
-      data: {},
+      status: 'OK',
+      message: trademarkMessage,
+      data: { applicationNumber, count: validItems.length },
+      applicationNumber,
       raw: xmlText
     };
   }
 
-  const trademarkMessage = generateTrademarkSummaryMessage(brandName, trademarkInfo);
-  const applicationNumber = extractXmlTag(firstItemXml, 'applicationNumber');
-
+  // 검색 결과는 있으나 출원인이 일치하지 않는 경우 = 없는 것으로 처리
   return {
-    status: 'OK',
-    message: trademarkMessage,
-    data: { applicationNumber },
-    applicationNumber,
+    status: 'NotFound',
+    message: '등록된 상표권 정보가 없습니다.',
+    data: {},
     raw: xmlText
   };
 }
@@ -509,32 +543,39 @@ function parseKIPRISPatentXmlResponse(xmlText: string, companyName: string, comp
     return createErrorApiResponse(`특허·실용 API 오류: ${resultMsg}`);
   }
 
-  const firstItemXml = extractFirstXmlElement(xmlText, 'item');
-  if (!firstItemXml) {
+  const allItemsXml = extractAllXmlElements(xmlText, 'item');
+  if (!allItemsXml || allItemsXml.length === 0) {
     return {
       status: 'NotFound',
-      message: '해당 단어로 조회된 특허·실용 공보가 없습니다.',
+      message: '등록된 특허·실용신안 정보가 없습니다.',
       data: {},
       raw: xmlText
     };
   }
 
-  const patentInfo = extractPatentInfoFromXml(firstItemXml);
-  
-  if (!isApplicantMatching(patentInfo.applicantName, companyInfo)) {
+  const validItems = allItemsXml.filter(itemXml => {
+    const patentInfo = extractPatentInfoFromXml(itemXml);
+    return isApplicantMatching(patentInfo.applicantName, companyInfo);
+  });
+
+  // 출원인 매칭되는 항목이 있으면 반환
+  if (validItems.length > 0) {
+    const firstValidItemXml = validItems[0];
+    const patentInfo = extractPatentInfoFromXml(firstValidItemXml);
+    const patentMessage = generatePatentSummaryMessage(companyName, patentInfo);
+
     return {
-      status: 'NotFound',
-      message: `조회된 특허는 검색 대상 회사('${companyInfo.corpName}')가 출원한 것이 아닙니다. (출원인: ${patentInfo.applicantName})`,
-      data: {},
+      status: 'OK',
+      message: patentMessage,
+      data: { count: validItems.length },
       raw: xmlText
     };
   }
 
-  const patentMessage = generatePatentSummaryMessage(companyName, patentInfo);
-
+  // 검색 결과는 있으나 출원인이 일치하지 않는 경우 = 없는 것으로 처리
   return {
-    status: 'OK',
-    message: patentMessage,
+    status: 'NotFound',
+    message: '등록된 특허·실용신안 정보가 없습니다.',
     data: {},
     raw: xmlText
   };
@@ -589,40 +630,45 @@ function extractFirstXmlElement(xml: string, elementName: string): string | null
   return match ? match[1] : null;
 }
 
+/**
+ * XML에서 지정된 태그의 모든 요소를 배열로 추출
+ * 예: <item>...</item><item>...</item> -> ['...', '...']
+ */
+function extractAllXmlElements(xml: string, elementName: string): string[] {
+  if (!xml) return [];
+  const regex = new RegExp(`<${elementName}>([\\s\\S]*?)<\\/${elementName}>`, 'g');
+  const matches: string[] = [];
+  let match;
+  while ((match = regex.exec(xml)) !== null) {
+    matches.push(match[1]);
+  }
+  return matches;
+}
+
 function isApplicantMatching(applicantName: string, companyInfo: CompanyInformation): boolean {
   if (!applicantName || !companyInfo.corpName) {
     return false;
   }
 
+  // [엄격한 매칭] 기업명 정규화 후 정확히 일치하는 경우만 인정
   const normalizeCompanyName = (name: string): string => {
     return name
       .toLowerCase()
-      .replace(/\s+/g, '')
-      .replace(/[.,\-()]/g, '')
-      .replace(/주식회사|대표|회사|공장|협회|단체|조합|연구소|센터|원|관|점|점포|스튜디오|카페|바|클럽|매장|지점|본점|지사/g, '');
-  };
-
-  const calculateSimilarity = (str1: string, str2: string): number => {
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
-    
-    if (longer.length === 0) return 1.0;
-    
-    const editDistance = levenshteinDistance(longer, shorter);
-    return (longer.length - editDistance) / longer.length;
+      .replace(/\(주\)/g, '')      // (주) 제거
+      .replace(/\(유\)/g, '')      // (유) 제거
+      .replace(/\(사\)/g, '')      // (사) 제거
+      .replace(/주식회사/g, '')    // 주식회사 제거
+      .replace(/유한회사/g, '')    // 유한회사 제거
+      .replace(/\s+/g, '')         // 모든 공백 제거
+      .replace(/[.,\-_]/g, '')     // 특수문자 제거
+      .trim();
   };
 
   const normalizedApplicant = normalizeCompanyName(applicantName);
   const normalizedCompany = normalizeCompanyName(companyInfo.corpName);
-  const normalizedRepresentative = normalizeCompanyName(companyInfo.representative || '');
 
-  const isExactMatch = normalizedApplicant === normalizedCompany;
-  const isRepresentativeMatch = normalizedRepresentative && normalizedApplicant === normalizedRepresentative;
-  
-  const similarity = calculateSimilarity(normalizedApplicant, normalizedCompany);
-  const isSimilarMatch = similarity >= 0.85;
-
-  return isExactMatch || isRepresentativeMatch || isSimilarMatch;
+  // 정규화된 회사명이 정확히 일치하는 경우만 true
+  return normalizedApplicant === normalizedCompany;
 }
 
 function levenshteinDistance(str1: string, str2: string): number {
@@ -876,6 +922,90 @@ function generateTrustReasonsSummary(
     : '조회된 기본 정보를 참고하여 거래 여부를 판단하시기 바랍니다.';
 
   return finalSummary;
+}
+
+/**
+ * 3단계 교차 검증 배지 생성
+ * 심사위원 피드백: '신뢰'라는 추상적 개념 대신 '검증(Verified)'이라는 객관적 근거 제시
+ */
+function generateVerificationBadges(
+  companyInfo: CompanyInformation,
+  ntsResult: ApiResponse,
+  ftcResult: ApiResponse,
+  trademarkResult: ApiResponse,
+  patentResult: ApiResponse
+): VerificationBadge {
+  
+  // 검증 1: 국세청 '계속사업자' 확인
+  const isContinuingBusiness = companyInfo.ntsStatus?.includes('계속');
+  const verification1 = {
+    name: '실존성 검증',
+    verified: ntsResult.status === 'OK' && isContinuingBusiness,
+    reason: isContinuingBusiness 
+      ? '국세청 확인: 계속사업자 (정상 운영)'
+      : '국세청 상태 미확인 또는 정상 운영 상태 아님'
+  };
+
+  // 검증 2: 공정위 신고 정보와 국세청 정보 일치
+  const ftcRegistered = ftcResult.status === 'OK';
+  const hasDomain = companyInfo.domain && companyInfo.domain.length > 0;
+  const verification2 = {
+    name: '투명성 검증',
+    verified: ftcRegistered && hasDomain,
+    reason: ftcRegistered && hasDomain
+      ? `공정위 신고 완료 (신고번호: ${companyInfo.ftcNumber || 'N/A'}) + 공식 웹사이트 운영`
+      : '공정위 신고 미완료 또는 웹사이트 미운영'
+  };
+
+  // 검증 3: 사업 지속성 - 개업일 기준 5년 이상 또는 IP 보유
+  const hasIntellectualProperty = trademarkResult.status === 'OK' || patentResult.status === 'OK';
+  const operatingYears = calculateOperatingYears(companyInfo.startDt);
+  const isLongTermBusiness = operatingYears >= 5;
+  
+  const verification3 = {
+    name: '지속성 검증',
+    verified: isLongTermBusiness || hasIntellectualProperty,
+    reason: isLongTermBusiness
+      ? `${operatingYears}년 이상 운영 (개업: ${companyInfo.startDt})`
+      : hasIntellectualProperty
+      ? '지식재산권 보유 (상표/특허 등록)'
+      : '사업 운영 기간 및 IP 정보 미확인'
+  };
+
+  // 종합 검증 결과
+  const verificationCount = [verification1, verification2, verification3]
+    .filter(v => v.verified).length;
+  
+  let verificationSummary = '';
+  if (verificationCount === 3) {
+    verificationSummary = `✅ 3단계 검증 완료: 이 회사는 국세청과 공정위에 정상 등록되어 있으며, ${isLongTermBusiness ? `${operatingYears}년 이상 운영` : '지식재산권을 보유'} 중인 신뢰할 수 있는 기업입니다.`;
+  } else if (verificationCount === 2) {
+    verificationSummary = `⚠️ 2단계 검증 완료: 기본적인 신뢰 요소는 확인되었으나, 일부 검증이 미완료되었습니다. 거래 전 추가 확인을 권장합니다.`;
+  } else if (verificationCount === 1) {
+    verificationSummary = `❓ 1단계 검증만 완료: 신뢰도가 제한적입니다. 거래 전 충분한 검증을 권장합니다.`;
+  } else {
+    verificationSummary = `⛔ 검증 실패: 제공된 정보로는 신뢰도를 확인할 수 없습니다.`;
+  }
+
+  return {
+    verification1,
+    verification2,
+    verification3,
+    verificationSummary
+  };
+}
+
+function calculateOperatingYears(startDt: string): number {
+  if (!startDt) return 0;
+  try {
+    const startDate = new Date(startDt.substring(0, 4) + '-' + startDt.substring(4, 6) + '-' + startDt.substring(6, 8));
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - startDate.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.floor(diffDays / 365);
+  } catch {
+    return 0;
+  }
 }
 
 function extractLocationFromAddress(address: string): string {

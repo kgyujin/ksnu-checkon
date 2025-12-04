@@ -149,7 +149,7 @@ function HeaderSection() {
         <span>CheckOn</span>
       </h1>
       <p className="text-base md:text-lg text-slate-500">
-        여러 공공 데이터를 한 번에 조회해 사업자 정보를 종합적으로 확인할 수 있는 도구입니다.
+        이 쇼핑몰, 믿고 사도 될까? 1초 만에 확인하기
       </p>
     </div>
   );
@@ -254,6 +254,10 @@ function CompanyProfileCard({ data }: { data: any }) {
           )}
         </div>
 
+        {data.verificationBadges && (
+          <VerificationBadges badges={data.verificationBadges} />
+        )}
+
         <CompanySummaryBox summary={data.summary} />
       </div>
     </div>
@@ -282,7 +286,6 @@ function CompanyBasicInfo({ businessInfo }: { businessInfo: any }) {
         {businessInfo.corpName || '회사명 정보 없음'}
       </h2>
 
-      <AddressDisplay address={businessInfo.address} />
       {businessInfo.address && (
         <AddressDisplay address={businessInfo.address} />
       )}
@@ -437,6 +440,80 @@ function ReferenceLinksBox({ businessInfo }: { businessInfo: any }) {
 }
 
 /**
+ * 3단계 교차 검증 배지 시스템
+ * 검증 1 (실존성): 국세청 계속사업자 ✅
+ * 검증 2 (투명성): 공정위 신고 + 웹사이트 ✅
+ * 검증 3 (지속성): 5년+ 운영 OR IP보유 ✅
+ */
+function VerificationBadges({ badges }: { badges: any }) {
+  if (!badges) return null;
+
+  return (
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+      <div className="flex items-center gap-2 mb-4">
+        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white">
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </span>
+        <span className="font-bold text-slate-900">교차 검증 결과</span>
+      </div>
+
+      <div className="space-y-3 mb-4">
+        <VerificationBadgeItem 
+          name={badges.verification1.name}
+          verified={badges.verification1.verified}
+          reason={badges.verification1.reason}
+        />
+        <VerificationBadgeItem 
+          name={badges.verification2.name}
+          verified={badges.verification2.verified}
+          reason={badges.verification2.reason}
+        />
+        <VerificationBadgeItem 
+          name={badges.verification3.name}
+          verified={badges.verification3.verified}
+          reason={badges.verification3.reason}
+        />
+      </div>
+
+      <div className="bg-white rounded-lg p-4 border border-blue-200">
+        <p className="text-sm text-slate-700 leading-relaxed">
+          {badges.verificationSummary}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 개별 검증 배지 아이템
+ */
+function VerificationBadgeItem({ name, verified, reason }: { name: string; verified: boolean; reason: string }) {
+  return (
+    <div className="flex items-start gap-3 bg-white rounded-lg p-3 border border-slate-200">
+      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
+        verified ? 'bg-green-500' : 'bg-slate-300'
+      }`}>
+        {verified ? (
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        ) : (
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-slate-900 text-sm mb-1">{name}</div>
+        <div className="text-xs text-slate-600">{reason}</div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * 기업 정보 요약 박스
  */
 function CompanySummaryBox({ summary }: { summary: string }) {
@@ -574,14 +651,57 @@ interface DetailCardProps {
   children: React.ReactNode;
 }
 
-function DetailCard({ title, children }: DetailCardProps) {
+function DetailCard({ title, icon, children }: DetailCardProps) {
+  const renderIcon = () => {
+    switch (icon) {
+      case 'shopping':
+        // 전자상거래: 쇼핑카트
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <circle cx="9" cy="20" r="1.5" fill="currentColor" />
+            <circle cx="18" cy="20" r="1.5" fill="currentColor" />
+            <path d="M3 3h2l.4 2M7 13h10l3-7H6.4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M7 13L5.4 5M7 13l-.5 3h12" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        );
+      case 'currency':
+        // 세무 정보: 계산기
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <rect x="5" y="3" width="14" height="18" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M8 7h8M8 11h2M12 11h2M16 11h.5M8 15h2M12 15h2M16 15h.5" strokeLinecap="round" />
+          </svg>
+        );
+      case 'chart':
+        // 업종 정보: 막대 차트
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <path d="M3 20h18M7 20V10M12 20V4M17 20V14" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        );
+      case 'trademark':
+        // 상표권: TM 마크
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <circle cx="12" cy="12" r="9" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M8 9v6M8 9h2.5M10.5 9v6M14 9v6M14 9h2M14 12h1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        );
+      default:
+        // 기본 아이콘
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4">
+            <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          </svg>
+        );
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-md border border-slate-100 p-6 text-sm md:text-base">
       <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2 text-lg">
         <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-50 text-emerald-600">
-          <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4">
-            <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.6" />
-          </svg>
+          {renderIcon()}
         </span>
         <span>{title}</span>
       </h3>
@@ -639,14 +759,31 @@ function IPAssetsSummaryGrid({ data }: { data: any }) {
  * IP 자산 요약 카드
  */
 function IPAssetSummaryCard({ title, message }: { title: string; message: string }) {
+  const renderIcon = () => {
+    if (title.includes('특허')) {
+      // 특허·실용: 전구 (아이디어)
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <path d="M12 3v1M12 20v1M4.22 4.22l.707.707M18.364 18.364l.707.707M1 12h1M21 12h1M4.22 19.78l.707-.707M18.364 5.636l.707-.707" strokeLinecap="round" />
+          <path d="M12 7a5 5 0 0 1 2 9.584V18a2 2 0 1 1-4 0v-1.416A5 5 0 0 1 12 7z" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    } else {
+      // 상표 행정처리 이력: 시계 (시간/이력)
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <circle cx="12" cy="12" r="9" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-md border border-slate-100 p-6">
       <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-lg">
         <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-sky-50 text-sky-600">
-          <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4">
-            <rect x="6.5" y="5.5" width="11" height="13" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-            <path d="M9 9.5h6M9 12h4.5M9 14.5h3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
+          {renderIcon()}
         </span>
         <span>{title}</span>
       </h3>
